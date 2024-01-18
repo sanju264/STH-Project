@@ -1,0 +1,494 @@
+import React, { useEffect, useRef, useState } from 'react';
+import Plotly from 'plotly.js-dist';
+
+const GraphicPolarPlot = ({ isVisible, onClose }) => {
+  const [selectedFolderFiles, setSelectedFolderFiles] = useState([]);
+  const [selectedFolderCheckboxes, setSelectedFolderCheckboxes] = useState({});
+  const [folderPath, setFolderPath] = useState('');
+  const plotColors = ['#FF5733', '#33FF57', '#334CFF', '#FF33EC', '#AACCFF', '#FFAABB', '#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
+  const [graphData, setGraphData] = useState([]);
+  const [showGraph, setShowGraph] = useState(true);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const graphContainerRef = useRef(null);
+  const [graphLimits, setGraphLimits] = useState([-4.65947, 4.65947]);
+  const [calculateValues, setCalculateValues] = useState(false);
+  const [fileList, setFileList] = useState([]);
+  const [showAngleCalculator, setShowAngleCalculator] = useState(false);
+  const [showValueCalculator, setShowValueCalculator] = useState(false);
+  const [showPointCalculatorPopup, setShowPointCalculatorPopup] = useState(false);
+  const [showZeroPointCalculatorPopup, setShowZeroPointCalculatorPopup] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupMessage, setPopupMessage] = useState('');
+  const [showZeroPoint, setShowZeroPoint] = useState(false);
+
+  const handleToggleValueCalculator = () => setShowValueCalculator(!showValueCalculator);
+  const handleToggleCalculateValues = () => setCalculateValues(!calculateValues);
+  const handleToggleAngleCalculator = () => setShowAngleCalculator(!showAngleCalculator);
+
+  const handlePopupClose = () => {
+    setShowPointCalculatorPopup(false);
+  };
+  const handleZeroPointCalculatorClick = () => {
+    setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
+  };
+  const handleZeroPointCalculatorPopupClose = () => {
+    setShowZeroPointCalculatorPopup(false);
+  };
+
+  const PopupMessage = ({ message, onClose }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+      <div className="bg-white p-4 rounded-md flex flex-col">
+        <div className="flex justify-end">
+          <button className="bg-red-500 text-white hover:bg-red-600 px-4 py-2 rounded" onClick={onClose}>
+            X
+          </button>
+        </div>
+        <div className="text-xl mb-4">{message}</div>
+        <div className="flex justify-center">
+          <button
+            className="bg-blue-500 text-white hover:bg-blue-600 px-4 py-2 rounded mr-2"
+            onClick={onClose}
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const handleFolderSelect = async () => {
+    try {
+      const folderInput = document.createElement('input');
+      folderInput.setAttribute('type', 'file');
+      folderInput.setAttribute('webkitdirectory', true);
+
+      folderInput.addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (files.length > 0) {
+          const fileList = Array.from(files);
+          setSelectedFolderFiles(fileList);
+          setSelectedFolderCheckboxes({});
+
+          const folderPath = fileList[0].webkitRelativePath;
+
+          handleCheckboxChange(fileList[0]);
+
+          setFolderPath(folderPath);
+        }
+      });
+
+      folderInput.click();
+    } catch (error) {
+      console.error('Error selecting folder:', error);
+    }
+  };
+
+  const handleCheckboxChange = async (file) => {
+    try {
+      const updatedCheckboxes = { ...selectedFolderCheckboxes };
+      if (Object.keys(updatedCheckboxes).length === 0) {
+        updatedCheckboxes[file.name] = false;
+      } else {
+        updatedCheckboxes[file.name] = !updatedCheckboxes[file.name];
+      }
+
+      const updatedSelectedFiles = Object.keys(updatedCheckboxes)
+        .filter((fileName) => updatedCheckboxes[fileName])
+        .map((fileName) => selectedFolderFiles.find((file) => file.name === fileName));
+
+      updatedSelectedFiles.sort((a, b) => {
+        const getSeriesNumber = (filename) => {
+          const match = filename.match(/(\d+)$/);
+          return match ? parseInt(match[1]) : 0;
+        };
+        return getSeriesNumber(a.name) - getSeriesNumber(b.name);
+      });
+
+      if (updatedSelectedFiles.length > 6) {
+        setPopupMessage('More than 6 graphs are not possible.');
+        setShowPopup(true);
+        return;
+      }
+
+      setSelectedFolderCheckboxes(updatedCheckboxes);
+      setSelectedFiles(updatedSelectedFiles);
+
+      const processedData = await Promise.all(updatedSelectedFiles.map(async (file, index) => {
+        const fileContent = await readFileContent(file);
+        const processedContent = processFileContent(fileContent);
+        return { file: file.name, data: processedContent, index };
+      }));
+
+      let maxAbsoluteValue = 0;
+      processedData.forEach(({ data }) => {
+        data.forEach(({ bendingMomentX, bendingMomentY }) => {
+          const absX = Math.abs(bendingMomentX);
+          const absY = Math.abs(bendingMomentY);
+          maxAbsoluteValue = Math.max(maxAbsoluteValue, absX, absY);
+        });
+      });
+
+      const newGraphLimits = [-maxAbsoluteValue, maxAbsoluteValue];
+      setGraphData(processedData);
+      setShowGraph(true);
+      setGraphLimits(newGraphLimits);
+    } catch (error) {
+      console.error('Error processing files:', error);
+    }
+  };
+
+  const closePopup = () => {
+    setShowPopup(false);
+    setPopupMessage('');
+  };
+
+  const readFileContent = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target.result;
+        resolve(content);
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsText(file);
+    });
+  };
+
+  const processFileContent = (fileContent) => {
+    const lines = fileContent.split('\n');
+    const dataStartIndex = lines.findIndex(line => line.startsWith('Tension;Torsion;Bending moment X;Bending moment Y;Time;Temperature'));
+
+    if (dataStartIndex !== -1) {
+      const data = lines.slice(dataStartIndex + 2).map(line => {
+        const [Tension, torsion, bendingMomentX, bendingMomentY, time, _temperature_] = line.split(';');
+        return { bendingMomentX: parseFloat(bendingMomentX), bendingMomentY: parseFloat(bendingMomentY) };
+      });
+
+      const maxLength = Math.max(data.length, data.filter(({ bendingMomentX }) => !isNaN(bendingMomentX)).length, data.filter(({ bendingMomentY }) => !isNaN(bendingMomentY)).length);
+      const alignedData = data.map(({ bendingMomentX, bendingMomentY }) => ({
+        bendingMomentX: isNaN(bendingMomentX) ? 0 : bendingMomentX,
+        bendingMomentY: isNaN(bendingMomentY) ? 0 : bendingMomentY,
+      }));
+      while (alignedData.length < maxLength) {
+        alignedData.push({ bendingMomentX: 0, bendingMomentY: 0 });
+      }
+
+      return alignedData;
+    } else {
+      return [];
+    }
+  };
+
+  useEffect(() => {
+    const initialGraphData = Array.from({ length: 6 }, (_, index) => ({
+      file: ` ${index + 1}`,
+      data: Array.from({ length: 100 }, (_, i) => ({
+        bendingMomentX: 0,
+        bendingMomentY: 0
+      })),
+    }));
+
+    setGraphData(initialGraphData);
+  }, []);
+
+  const timeLabels = graphData.length > 0 ? graphData[0].data.map((_, i) => i) : [];
+
+  useEffect(() => {
+    if (showGraph) {
+      const rows = 2;
+      const cols = 3;
+      const graphContainerId = 'graph-container';
+      const container = graphContainerRef.current;
+      container.innerHTML = '';
+      const containerMaxWidth = 800;
+
+      for (let row = 0; row < rows; row++) {
+        const rowContainer = document.createElement('div');
+        rowContainer.style.display = 'flex';
+
+        for (let col = 0; col < cols; col++) {
+          const index = col + row * cols;
+          if (index < graphData.length) {
+            const modifiedData = graphData[index].data.map((point, pointIndex, arr) => {
+              if (pointIndex === arr.length - 1) {
+                return {
+                  bendingMomentX: arr[0].bendingMomentX,
+                  bendingMomentY: arr[0].bendingMomentY,
+                };
+              }
+              return point;
+            });
+
+            if (showZeroPoint) {
+              modifiedData.push({ bendingMomentX: 0, bendingMomentY: 0 });
+            }
+
+            const trace = {
+              x: modifiedData.map((d) => d.bendingMomentX),
+              y: modifiedData.map((d) => d.bendingMomentY),
+              text: modifiedData.map((d) => (${d.bendingMomentX}, ${d.bendingMomentY})),
+              mode: 'markers',
+              type: 'scatter',
+              marker: {
+                symbol: 'diamond',
+                color: plotColors[index % plotColors.length],
+              },
+            };
+
+            const midpointX = (graphLimits[0] + graphLimits[1]) / 2;
+            const midpointY = (graphLimits[0] + graphLimits[1]) / 2;
+
+            const layout = {
+              xaxis: {
+                title: 'Bending Moment X',
+                zeroline: true,
+                zerolinecolor: 'black',
+                showline: true,
+                showticklabels: true,
+                ticks: 'inside',
+                tickvals: [graphLimits[0], 0, graphLimits[1]],
+                range: graphLimits,
+                fixedrange: true,
+                tickmode: 'array',
+              },
+              yaxis: {
+                title: 'Bending Moment Y',
+                zeroline: true,
+                zerolinecolor: 'black',
+                showline: true,
+                showticklabels: true,
+                tickmode: 'array',
+                tickvals: [
+                  graphLimits[0],
+                  Math.round(graphLimits[0] * 0.2),
+                  Math.round(graphLimits[0] * 0.4),
+                  Math.round(graphLimits[0] * 0.6),
+                  Math.round(graphLimits[0] * 0.8),
+                  0,
+                  Math.round(graphLimits[1] * 0.2),
+                  Math.round(graphLimits[1] * 0.4),
+                  Math.round(graphLimits[1] * 0.6),
+                  Math.round(graphLimits[1] * 0.8),
+                  graphLimits[1],
+                ],
+                ticks: 'inside',
+                range: graphLimits,
+                fixedrange: true,
+              },
+              shapes: [
+                {
+                  type: 'line',
+                  x0: midpointX,
+                  x1: midpointX,
+                  y0: graphLimits[0],
+                  y1: graphLimits[1],
+                  line: {
+                    color: 'black',
+                    width: 2,
+                    dash: 'dashdot',
+                  },
+                },
+                {
+                  type: 'line',
+                  x0: graphLimits[0],
+                  x1: graphLimits[1],
+                  y0: midpointY,
+                  y1: midpointY,
+                  line: {
+                    color: 'black',
+                    width: 2,
+                    dash: 'dashdot',
+                  },
+                },
+              ],
+              dragmode: calculateValues ? 'select' : false,
+              modebar: {
+                remove: [
+                  'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d', 'hoverClosestCartesian', 'hoverCompareCartesian', 'toggleSpikelines', 'resetViews', 'sendDataToCloud', 'toggleHover', 'resetViewMapbox', 'resetCameraDefault3d', 'resetCameraLastSave3d',
+                ],
+              },
+            };
+
+            const config = {
+              displayModeBar: false,
+              displaylogo: false,
+            };
+
+            const newGraphContainer = document.createElement('div');
+            newGraphContainer.id = ${graphContainerId}-${index};
+            newGraphContainer.style.width = ${100 / cols}%;
+            newGraphContainer.style.maxWidth = '800px';
+            newGraphContainer.style.float = 'left';
+            newGraphContainer.style.border = '2px solid #ccc';
+            newGraphContainer.style.margin = '10px';
+            newGraphContainer.style.backgroundColor = 'gray';
+            newGraphContainer.style.marginRight = '2px';
+
+            container.appendChild(newGraphContainer);
+
+            Plotly.newPlot(newGraphContainer.id, [trace], layout, config);
+
+            newGraphContainer.on('plotly_selected', (eventData) => {
+              const selectedPoints = eventData.points;
+              if (selectedPoints.length > 0) {
+                const selectedFileIndex = parseInt(newGraphContainer.id.split('-')[1]);
+                const selectedData = selectedPoints.map((point) => ({
+                  x: timeLabels[point.x],
+                  y: graphData[selectedFileIndex].data[point.x].bendingMomentY,
+                }));
+                handleShowPointCalculator(selectedData, selectedFileIndex);
+              }
+            });
+          }
+        }
+        container.appendChild(rowContainer);
+      }
+    }
+  }, [graphData, showGraph]);
+
+  const handleShowPointCalculator = (selectedData, selectedFileIndex) => {
+    setShowPointCalculatorPopup(true);
+    setPopupMessage(
+      <PointCalculator
+        data={selectedData}
+        fileIndex={selectedFileIndex}
+        onClose={handlePopupClose}
+        onUpdate={(fileIndex, newData) => handleGraphDataUpdate(fileIndex, newData)}
+      />
+    );
+  };
+
+  const handleGraphDataUpdate = (fileIndex, newData) => {
+    const updatedGraphData = [...graphData];
+    updatedGraphData[fileIndex].data = newData;
+    setGraphData(updatedGraphData);
+  };
+
+  const handleShowZeroPointCalculator = () => {
+    setShowZeroPointCalculatorPopup(true);
+    setPopupMessage(
+      <ZeroPointCalculator
+        data={graphData.map((graph) => graph.data)}
+        onClose={handleZeroPointCalculatorPopupClose}
+        onUpdate={(newData) => setGraphData(newData)}
+      />
+    );
+  };
+
+  const handleToggleGraph = () => {
+    setShowGraph(!showGraph);
+  };
+
+  const PointCalculator = ({ data, fileIndex, onClose, onUpdate }) => {
+    const [calculatedData, setCalculatedData] = useState(data);
+
+    const handleUpdate = () => {
+      onUpdate(fileIndex, calculatedData);
+      onClose();
+    };
+
+    return (
+      <div className="point-calculator">
+        <h2 className="text-lg font-bold mb-2">Point Calculator</h2>
+        <table className="table-auto w-full mb-4">
+          <thead>
+            <tr>
+              <th className="px-4 py-2">Time</th>
+              <th className="px-4 py-2">Bending Moment Y</th>
+            </tr>
+          </thead>
+          <tbody>
+            {calculatedData.map((point, index) => (
+              <tr key={index}>
+                <td className="border px-4 py-2">{point.x}</td>
+                <td className="border px-4 py-2">{point.y}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="bg-blue-500 text-white hover:bg-blue-600 px-4 py-2 rounded" onClick={handleUpdate}>
+          Update Graph
+        </button>
+        <button className="bg-red-500 text-white hover:bg-red-600 px-4 py-2 rounded ml-2" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    );
+  };
+
+  const ZeroPointCalculator = ({ data, onClose, onUpdate }) => {
+    const [calculatedData, setCalculatedData] = useState(data);
+
+    const handleUpdate = () => {
+      onUpdate(calculatedData);
+      onClose();
+    };
+
+    return (
+      <div className="zero-point-calculator">
+        <h2 className="text-lg font-bold mb-2">Zero Point Calculator</h2>
+        <table className="table-auto w-full mb-4">
+          <thead>
+            <tr>
+              <th className="px-4 py-2">File</th>
+              <th className="px-4 py-2">Time</th>
+              <th className="px-4 py-2">Bending Moment X</th>
+              <th className="px-4 py-2">Bending Moment Y</th>
+            </tr>
+          </thead>
+          <tbody>
+            {calculatedData.map((fileData, fileIndex) =>
+              fileData.map((point, pointIndex) => (
+                <tr key={${fileIndex}-${pointIndex}}>
+                  <td className="border px-4 py-2">{fileIndex + 1}</td>
+                  <td className="border px-4 py-2">{pointIndex}</td>
+                  <td className="border px-4 py-2">{point.bendingMomentX}</td>
+                  <td className="border px-4 py-2">{point.bendingMomentY}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        <button className="bg-blue-500 text-white hover:bg-blue-600 px-4 py-2 rounded" onClick={handleUpdate}>
+          Update Graph
+        </button>
+        <button className="bg-red-500 text-white hover:bg-red-600 px-4 py-2 rounded ml-2" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className={graphic-polar-plot ${isVisible ? 'block' : 'hidden'}}>
+      <div className="header">
+        <h2 className="text-xl font-bold">Graphic Polar Plot</h2>
+        <button className="close-button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <div className="folder-selector">
+        <button className="select-folder-button" onClick={handleFolderSelect}>
+          Select Folder
+        </button>
+        <div className="selected-folder">
+          {folderPath && (
+            <>
+              <span className="folder-label">Selected Folder:</span>
+              <span className="folder-path">{folderPath}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="graph-toggle">
+        <button className="toggle-graph-button" onClick={handleToggleGraph}>
+          Toggle Graph
+        </button>
+      </div>
+      <div className="graph-container" ref={graphContainerRef}></div>
+      {showPopup && <PopupMessage message={popupMessage} onClose={closePopup} />}
+    </div>
+  );
+};
+
+export default GraphicPolarPlot;
