@@ -32,7 +32,7 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
     setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
   };
   const handleZeroPointCalculatorPopupClose = () => {
-    setShowZeroPointCalculatorPopup(false);
+    setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
   };
 // pop up messsage after 6 graphs 
 const PopupMessage = ({ message, onClose }) => (
