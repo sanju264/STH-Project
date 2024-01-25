@@ -41,7 +41,7 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
     setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
   };
   const handleToggleShowAtStressPoint = () => {
-    setShowAtStressPoint(!showAtStressPoint);
+    setShowAtStressPoint(false);
   };
 // pop up messsage after 6 graphs 
 const PopupMessage = ({ message, onClose }) => (
