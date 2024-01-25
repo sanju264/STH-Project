@@ -19,6 +19,7 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
   const [showZeroPointCalculatorPopup, setShowZeroPointCalculatorPopup] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
 
   const handleToggleValueCalculator = () => setShowValueCalculator(!showValueCalculator);
   const handleToggleCalculateValues = () => setCalculateValues(!calculateValues);
@@ -27,6 +28,10 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
 
   const handlePopupClose = () => {
     setShowPointCalculatorPopup(false);
+  };
+  const handleMouseMove = (event) => {
+    // Update the cursor position based on the mouse move event
+    setCursorPosition({ x: event.clientX, y: event.clientY });
   };
   const handleZeroPointCalculatorClick = () => {
     setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
@@ -232,6 +237,11 @@ const PopupMessage = ({ message, onClose }) => (
               return point;
             });
 
+            const centerOfGravityX = cursorPosition.x;
+            const centerOfGravityY = cursorPosition.y;
+
+            const color = `rgb(${centerOfGravityX % 255}, ${centerOfGravityY % 255}, ${(centerOfGravityX + centerOfGravityY) % 255})`;
+
             const trace = {
               x: modifiedData.map(d => d.bendingMomentX),
               y: modifiedData.map(d => d.bendingMomentY),
@@ -352,7 +362,7 @@ const PopupMessage = ({ message, onClose }) => (
         container.appendChild(rowContainer);
       }
     }
-  }, [showGraph, graphData, graphLimits, calculateValues]);
+  }, [showGraph, graphData, graphLimits, calculateValues, cursorPosition]);
   const handlePointCalculatorClick = () => {
     setShowPointCalculatorPopup(true);
   };
