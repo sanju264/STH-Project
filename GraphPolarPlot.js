@@ -20,6 +20,7 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [showAtStressPoint, setShowAtStressPoint] = useState(false);
 
   const handleToggleValueCalculator = () => setShowValueCalculator(!showValueCalculator);
   const handleToggleCalculateValues = () => setCalculateValues(!calculateValues);
@@ -38,6 +39,9 @@ const GraphicPolarPlot = ({ isVisible, onClose }) => {
   };
   const handleZeroPointCalculatorPopupClose = () => {
     setShowZeroPointCalculatorPopup(!showZeroPointCalculatorPopup);
+  };
+  const handleToggleShowAtStressPoint = () => {
+    setShowAtStressPoint(!showAtStressPoint);
   };
 // pop up messsage after 6 graphs 
 const PopupMessage = ({ message, onClose }) => (
@@ -362,7 +366,7 @@ const PopupMessage = ({ message, onClose }) => (
         container.appendChild(rowContainer);
       }
     }
-  }, [showGraph, graphData, graphLimits, calculateValues, cursorPosition]);
+  }, [showGraph, graphData, graphLimits, calculateValues, cursorPosition, showAtStressPoint]);
   const handlePointCalculatorClick = () => {
     setShowPointCalculatorPopup(true);
   };
@@ -423,8 +427,9 @@ const PopupMessage = ({ message, onClose }) => (
             </button>
             <button  className="mt-4 bg-gray-300 text-black hover:bg-gray-400 px-4 py-2 rounded"  style={{ width: '200px', height: '50px' }}>Report</button>
             <button
-              className={`block mt-4 ${showZeroPointCalculatorPopup ? 'bg-green-500 text-white' : 'bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-1 rounded'}`}
-              onClick={handleZeroPointCalculatorClick} style={{ width: '200px', height: '50px' }}>
+              className={`block mt-4 ${showAtStressPoint ? 'bg-green-500 text-white' : 'bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-1 rounded'}`}
+              onClick={handleToggleShowAtStressPoint}
+              style={{ width: '200px', height: '50px' }}>
               Show / not Show at Stress point
             </button>
             {showValueCalculator && (
